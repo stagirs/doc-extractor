@@ -13,21 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.github.stagirs.docextractor;
+package com.github.stagirs.docextractor.latex;
 
-import com.github.stagirs.common.Store;
-import com.github.stagirs.common.model.doc.Document;
-import java.io.File;
 import java.util.Iterator;
+
 /**
- * 
+ *
  * @author Dmitriy Malakhov
  */
-public interface DocExtractor {
-    /**
-     * 
-     * @param docs итератор по файлам документов, каждый документ в отдельном файле
-     * @param store хранилище структурированных документов, после заполнения Document, записываем его сюда
-     */
-    public void extract(Iterator<File> docs, Store<Document> store);
+public class Utils {
+    
+    public static String getFromBraces(String line, Iterator<String> lines){
+        while(line.split("\\{").length != line.split("\\}").length && lines.hasNext()){
+            line += " " + lines.next();
+        }
+        if(!line.contains("}")){
+            throw new RuntimeException("can't find }");
+        }
+        return line.substring(line.indexOf("{") + 1, line.lastIndexOf("}")).replaceAll("\\\\.*? ", " ");
+    }
 }

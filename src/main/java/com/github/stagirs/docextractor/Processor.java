@@ -13,23 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.github.stagirs.docextractor.latex;
+package com.github.stagirs.docextractor;
 
-import com.github.stagirs.common.Store;
-import com.github.stagirs.common.model.doc.Document;
-import com.github.stagirs.docextractor.DocExtractor;
-import java.io.File;
-import java.util.Iterator;
+import com.github.stagirs.common.model.Document;
 
 /**
  *
  * @author Dmitriy Malakhov
  */
-public class LatexDocExtractor implements DocExtractor{
-
-    @Override
-    public void extract(Iterator<File> docs, Store<Document> store) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-    
+public interface Processor {
+    public Document processDocument(String id, String doc);
 }

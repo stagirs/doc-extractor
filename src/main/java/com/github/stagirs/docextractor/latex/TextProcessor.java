@@ -49,7 +49,7 @@ public class TextProcessor {
                     model.append(c);
                     continue;
                 }
-                if(!Character.isLetter(c) && c !=',' && c !='$' || Character.isLetter(c) && !Character.isLowerCase(c)){
+                if(!Character.isLetter(c) && c !=',' && c !='$' && !Character.isDigit(c) || Character.isLetter(c) && !Character.isLowerCase(c)){
                     model.closeSentence();
                     model.openSentence();
                 }

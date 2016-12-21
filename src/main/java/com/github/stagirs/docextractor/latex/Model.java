@@ -86,14 +86,14 @@ public class Model {
         if(subsection != null || point != null || sentence != null){
             throw new RuntimeException("can't open subsection");
         }
-        subsection = new Section(title);
+        subsection = new Section(document.getId(), title);
     }
     
     public void openSection(String title){
         if(section != null || subsection != null || point != null || sentence != null){
             throw new RuntimeException("can't open section");
         }
-        section = new Section(title);
+        section = new Section(document.getId(), title);
     }
     
     
@@ -136,7 +136,7 @@ public class Model {
             openPoint(null);
         }
         if(sentence == null){
-            sentence = new Sentence(sentenceId++, 0);
+            sentence = new Sentence(document.getId(), point.getNumber(), sentenceId++, 0);
         }
     }
     
@@ -153,7 +153,7 @@ public class Model {
     
     public void openPoint(String className){
         if(point == null){
-            point = new Point(pointId++, className);
+            point = new Point(document.getId(), pointId++, className);
         }
     }
     

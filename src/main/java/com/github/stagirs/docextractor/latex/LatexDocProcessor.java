@@ -111,6 +111,7 @@ public class LatexDocProcessor implements Processor{
         }
         model.openPart("latex");
         int level = 1;
+        model.appendLine(start).append('\n');
         do{
             String line = lines.next();
             model.appendLine(line).append('\n');

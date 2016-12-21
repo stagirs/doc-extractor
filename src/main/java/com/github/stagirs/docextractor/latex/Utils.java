@@ -24,7 +24,7 @@ import java.util.Iterator;
 public class Utils {
     
     public static String getFromBraces(String line, Iterator<String> lines){
-        while(line.split("\\{").length != line.split("\\}").length && lines.hasNext()){
+        while(line.split("\\{", -1).length != line.split("\\}", -1).length && lines.hasNext()){
             line += " " + lines.next();
         }
         if(!line.contains("}")){

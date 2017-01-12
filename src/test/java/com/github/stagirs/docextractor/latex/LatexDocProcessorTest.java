@@ -83,10 +83,10 @@ public class LatexDocProcessorTest {
     
     @Test
     public void test() throws IOException{
-        DocIterator docs = new DocIterator(new File("C:\\Program Files\\Apache Software Foundation\\Tomcat 8.0\\work\\stagirs\\docs\\collection"));
+        DocIterator docs = new DocIterator(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\collection"));
         while(docs.hasNext()){
             Text text = docs.next();
-            DocumentSerializer.serialize(new File("C:\\Program Files\\Apache Software Foundation\\Tomcat 8.0\\work\\stagirs\\docs\\processed"), new LatexDocProcessor().processDocument(text.id, text.text));
+            DocumentSerializer.serialize(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\processed"), new LatexDocProcessor().processDocument(text.id, text.text));
         }
     }
 }

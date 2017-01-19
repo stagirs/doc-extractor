@@ -176,6 +176,7 @@ public class Model {
     }
 
     public Document getDocument() {
+        closeSection();
         return document;
     }
 }

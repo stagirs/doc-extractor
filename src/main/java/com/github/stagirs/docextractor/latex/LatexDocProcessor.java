@@ -17,8 +17,16 @@ package com.github.stagirs.docextractor.latex;
 
 import com.github.stagirs.common.model.Document;
 import com.github.stagirs.docextractor.Processor;
-import static com.github.stagirs.docextractor.latex.Utils.getFromBraces;
-import java.util.Arrays;
+import com.github.stagirs.latex.MacroProcessor;
+import com.github.stagirs.latex.lexical.Chain;
+import com.github.stagirs.latex.lexical.LatexLexicalAnalyzer;
+import com.github.stagirs.latex.lexical.item.Command;
+import com.github.stagirs.latex.lexical.item.CommandParam;
+import com.github.stagirs.latex.lexical.item.Group;
+import com.github.stagirs.latex.lexical.item.Item;
+import com.github.stagirs.latex.lexical.item.PlainText;
+import java.text.CharacterIterator;
+import java.text.StringCharacterIterator;
 import java.util.Iterator;
 
 /**
@@ -28,99 +36,174 @@ import java.util.Iterator;
 public class LatexDocProcessor implements Processor{
 
     private Model model;
-    private MetaProcessor metaProcessor;
-    private TextProcessor textProcessor;
+    private Command openLatexBlockCommand;
     
     @Override
     public Document processDocument(String id, String doc){
+        Chain chain = LatexLexicalAnalyzer.parse(doc);
+        MacroProcessor.process(chain);
         model = new Model(id);
-        metaProcessor = new MetaProcessor(model);
-        textProcessor = new TextProcessor(model);
-        doc = doc.replaceAll("\\$\\$", "\n\\$\\$\n")
-                .replaceAll("\\\\begin\\s*?\\{(.*?)\\}", "\n\\\\begin{$1}\n")
-                .replaceAll("\\\\end\\s*?\\{(.*?)\\}", "\n\\\\end{$1}\n")
-                .replaceAll("\\\\section\\s*?\\{(.*?)\\}", "\n\\\\section{$1}\n")
-                .replaceAll("\\\\subsection\\s*?\\{(.*?)\\}", "\n\\\\subsection{$1}\n")
-                /*.replace("}{", "}\n{")*/.replace("\\,", ",").replace("\\;", ";").replace("\r", "");
-        Iterator<String> lines = Arrays.asList(doc.split("\n")).iterator();
-        while (lines.hasNext()) {
-            String line = lines.next();
-            
-            if(model.isMeta()){
-                metaProcessor.processMetaLine(line, lines);
-                if(line.startsWith("\\begin{document}")){
-                    model.closeMeta();
-                }
-                continue;
-            }
-            if(line.isEmpty() || line.startsWith("\\vskip")){
-                model.newline();
-                continue;
-            }
-            if(line.startsWith("\\par") || line.startsWith("\\newline")){
-                model.closePoint(null);
-                continue;
-            }
-            if(line.startsWith("\\begin{equation}")){
-                processLatexBlock(lines, "\\begin{equation}", "\\end{equation}");
-                continue;
-            }
-            if(line.startsWith("\\begin{gather*}")){
-                processLatexBlock(lines, "\\begin{gather*}", "\\end{gather*}");
-                continue;
-            }
-            if(line.startsWith("\\begin{multline*}")){
-                processLatexBlock(lines, "\\begin{multline*}", "\\end{multline*}");
-                continue;
-            }
-            if(line.startsWith("\\begin{gather}")){
-                processLatexBlock(lines, "\\begin{gather}", "\\end{gather}");
-                continue;
-            }
-            if(line.startsWith("\\begin{multline}")){
-                processLatexBlock(lines, "\\begin{multline}", "\\end{multline}");
-                continue;
-            }
-            if(line.startsWith("$$")){
-                processLatexBlock(lines, "$$", "$$");
-                continue;
-            }
-            if(line.startsWith("\\section{")){
-                model.closeSection();
-                model.openSection(getFromBraces(line, lines));
-                continue;
-            }
-            if(line.startsWith("\\subsection{")){
-                model.closeSubsection();
-                model.openSubsection(getFromBraces(line, lines));
-                continue;
-            }
-            textProcessor.processTextLine(line, lines);
-            model.newline();
-        }
-        model.closeSection();
+        processChain(chain);
         return model.getDocument();
     }
     
-    private void processLatexBlock(Iterator<String> lines, String start, String end){
-        if(!lines.hasNext()){
+    private void processChain(Chain chain){
+        Iterator<Item> items = chain.getList().iterator();
+        while (items.hasNext()) {
+            Item item = items.next();
+            if(item instanceof Command){
+                processCommand((Command) item, items);
+            }
+            if(item instanceof Group){
+                processChain(((Group) item).getText());
+            }
+            if(item instanceof PlainText){
+                processTextLine(((PlainText) item).toString());
+            }
+        }
+    }
+    
+    private void processCommand(Command command, Iterator<Item> items){
+        switch(command.getName()){
+            case "$": case "$$": 
+                if(openLatexBlockCommand != null){
+                    if(command.getName().equals(openLatexBlockCommand.getName())){
+                        model.closePart();
+                        openLatexBlockCommand = null;
+                    }else{
+                        throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                    }
+                }else{
+                    if(!model.isSentence()){
+                        model.openSentence();
+                    }
+                    model.openPart("latex");
+                    openLatexBlockCommand = command;
+                }
+                break;
+            case "\\[": 
+                if(openLatexBlockCommand != null){
+                    throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                }else{
+                    if(!model.isSentence()){
+                        model.openSentence();
+                    }
+                    model.openPart("latex");
+                    openLatexBlockCommand = command;
+                }
+                break;
+            case "\\]": 
+                if(openLatexBlockCommand == null){
+                    throw new RuntimeException("begin command: null; end command:" + command);
+                }else{
+                    if(command.getName().equals("\\]")){
+                        model.closePart();
+                        openLatexBlockCommand = null;
+                    }else{
+                        throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                    }
+                }
+                break;
+                
+            case "\\begin": 
+                switch(command.getFirstParamText()){
+                    case "equation": case "gather*": case "multline*": case "gather": case "multline":  
+                        if(openLatexBlockCommand != null){
+                            throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                        }else{
+                            if(!model.isSentence()){
+                                model.openSentence();
+                            }
+                            model.openPart("latex");
+                            openLatexBlockCommand = command;
+                        }
+                    break;    
+                    case "document": model.closeMeta(); break;   
+                }
+                break; 
+            case "\\end": 
+                switch(command.getFirstParamText()){
+                    case "equation": case "gather*": case "multline*": case "gather": case "multline":  
+                        if(openLatexBlockCommand == null){
+                            throw new RuntimeException("begin command: null; end command:" + command);
+                        }else{
+                            if(openLatexBlockCommand.getName().equals("\\begin") && command.getFirstParamText().equals(openLatexBlockCommand.getFirstParamText())){
+                                model.closePart();
+                                openLatexBlockCommand = null;
+                            }else{
+                                throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                            }
+                        }
+                    break;    
+                }
+                break;     
+            case "\n\n": case "\\par": case "\\newline": case "\\vskip": model.closePoint(null); break;  
+            case "\\section": 
+                model.closeSection();
+                model.openSection(command.getFirstParamText());
+                break;
+            case "\\subsection": 
+                model.closeSubsection();
+                model.openSubsection(command.getFirstParamText());
+                break;    
+            case "\\thanks": model.getDocument().setThanks(command.getFirstParamText()); break;
+            case "\\title":  model.getDocument().setTitle(command.getFirstParamText()); break;
+            case "\\author":  model.getDocument().setAuthor(command.getFirstParamText()); break;
+            case "\\udk":  model.getDocument().setClassifier(command.getFirstParamText()); break;
+            case "\\nomer":  model.getDocument().addOutput("nomer: " + command.getFirstParamText()); break;
+            case "\\god":  model.getDocument().addOutput("year: " + command.getFirstParamText()); break;
+            default:
+                for (CommandParam param : command.geParams()) {
+                    processChain(param.getText());
+                }
+        }
+    }
+    
+    private void processTextLine(String line){
+        line = line.trim();
+        if(line.isEmpty()){
             return;
         }
         if(!model.isSentence()){
             model.openSentence();
         }
-        model.openPart("latex");
-        int level = 1;
-        model.appendLine(start).append('\n');
-        do{
-            String line = lines.next();
-            model.appendLine(line).append('\n');
-            if(line.startsWith(end)){
-                level--;
-            }else if(line.startsWith(start)){
-                level++;
+        CharacterIterator it = new StringCharacterIterator(line); 
+        boolean p = checkSentenceStart(it);
+        for (char c = it.first(); c != CharacterIterator.DONE; c = it.next()) {
+            if(p){
+                if(Character.isWhitespace(c)){
+                    model.append(c);
+                    continue;
+                }
+                p = checkSentenceStart(it);
             }
-        }while(level > 0 && lines.hasNext());
-        model.closePart();
+            if(!model.isSentence()){
+                model.openSentence();
+            }
+            model.append(c);
+            if(c == '.'){
+                p = true;
+            }
+        }
     }
+    
+    private boolean checkSentenceStart(CharacterIterator it){
+        char first = it.first();
+        if(first == '.'){
+            return true;
+        }
+        char second = it.next();
+        if(second == CharacterIterator.DONE){
+            model.append(first);
+            return false;
+        }
+        if(Character.isLetter(first) && Character.isUpperCase(first) && Character.isLetter(second)){
+            model.closeSentence();
+            model.openSentence();
+        }
+        model.append(first);
+        model.append(second);
+        return second == '.';
+    }
+    
 }

@@ -33,6 +33,7 @@ import java.util.Iterator;
  *
  * @author Dmitriy Malakhov
  */
+//TODO сначала обрабатываем блоки, потом $$, потом $, потом выделяем предложения
 public class LatexDocProcessor implements Processor{
 
     private Model model;
@@ -52,7 +53,7 @@ public class LatexDocProcessor implements Processor{
         while (items.hasNext()) {
             Item item = items.next();
             if(item instanceof Command){
-                processCommand((Command) item, items);
+                processCommand((Command) item);
             }
             if(item instanceof Group){
                 processChain(((Group) item).getText());
@@ -63,15 +64,17 @@ public class LatexDocProcessor implements Processor{
         }
     }
     
-    private void processCommand(Command command, Iterator<Item> items){
+    private void processCommand(Command command){
         switch(command.getName()){
             case "$": case "$$": 
                 if(openLatexBlockCommand != null){
                     if(command.getName().equals(openLatexBlockCommand.getName())){
-                        model.closePart();
+                        if(model.isSentence()){
+                            model.closePart();
+                        }
                         openLatexBlockCommand = null;
                     }else{
-                        throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                        return;
                     }
                 }else{
                     if(!model.isSentence()){
@@ -152,6 +155,8 @@ public class LatexDocProcessor implements Processor{
             case "\\udk":  model.getDocument().setClassifier(command.getFirstParamText()); break;
             case "\\nomer":  model.getDocument().addOutput("nomer: " + command.getFirstParamText()); break;
             case "\\god":  model.getDocument().addOutput("year: " + command.getFirstParamText()); break;
+            case "\\text":  model.appendLine(command.getFirstParamText()); break;
+            case "\\intertext":  model.appendLine(command.getFirstParamText()); break;
             default:
                 for (CommandParam param : command.geParams()) {
                     processChain(param.getText());
@@ -160,50 +165,38 @@ public class LatexDocProcessor implements Processor{
     }
     
     private void processTextLine(String line){
-        line = line.trim();
+        if(line.contains("Рассмотрим процедуру, подобную")){
+            line.toString();
+        }
+        line = " " + line.trim();
         if(line.isEmpty()){
             return;
         }
-        if(!model.isSentence()){
-            model.openSentence();
-        }
         CharacterIterator it = new StringCharacterIterator(line); 
-        boolean p = checkSentenceStart(it);
-        for (char c = it.first(); c != CharacterIterator.DONE; c = it.next()) {
-            if(p){
-                if(Character.isWhitespace(c)){
-                    model.append(c);
-                    continue;
-                }
-                p = checkSentenceStart(it);
-            }
+        char c = it.first();
+        while ( c != CharacterIterator.DONE) {
             if(!model.isSentence()){
                 model.openSentence();
             }
             model.append(c);
             if(c == '.'){
-                p = true;
+                char first = it.next();
+                while(first != CharacterIterator.DONE && Character.isWhitespace(first)){
+                    first = it.next();
+                }
+                char second = it.next();
+                if(Character.isLetter(first) && Character.isUpperCase(first) && Character.isLetter(second)){
+                    model.closeSentence();
+                }
+                if(second != CharacterIterator.DONE){
+                    it.previous();
+                }
+                if(first != CharacterIterator.DONE){
+                    it.previous();
+                }
             }
+            c = it.next();
         }
-    }
-    
-    private boolean checkSentenceStart(CharacterIterator it){
-        char first = it.first();
-        if(first == '.'){
-            return true;
-        }
-        char second = it.next();
-        if(second == CharacterIterator.DONE){
-            model.append(first);
-            return false;
-        }
-        if(Character.isLetter(first) && Character.isUpperCase(first) && Character.isLetter(second)){
-            model.closeSentence();
-            model.openSentence();
-        }
-        model.append(first);
-        model.append(second);
-        return second == '.';
     }
     
 }

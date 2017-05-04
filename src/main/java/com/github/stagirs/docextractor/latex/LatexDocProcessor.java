@@ -15,8 +15,10 @@
  */
 package com.github.stagirs.docextractor.latex;
 
-import com.github.stagirs.common.model.Document;
+import com.github.stagirs.common.document.Document;
+import com.github.stagirs.common.document.Point;
 import com.github.stagirs.docextractor.Processor;
+import com.github.stagirs.latex.MacroBlockProcessor;
 import com.github.stagirs.latex.MacroProcessor;
 import com.github.stagirs.latex.lexical.Chain;
 import com.github.stagirs.latex.lexical.LatexLexicalAnalyzer;
@@ -27,176 +29,171 @@ import com.github.stagirs.latex.lexical.item.Item;
 import com.github.stagirs.latex.lexical.item.PlainText;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  *
  * @author Dmitriy Malakhov
  */
-//TODO сначала обрабатываем блоки, потом $$, потом $, потом выделяем предложения
 public class LatexDocProcessor implements Processor{
-
-    private Model model;
-    private Command openLatexBlockCommand;
+    HashSet<String> latexBlockNames = new HashSet(Arrays.asList("equation", "gather*", "multline*", "gather", "multline"));
+    public class Block{
+        List<Item> items = new ArrayList<>();
+        public void add(Item item){
+            items.add(item);
+        }
+        public boolean isEmpty(){
+            return items.isEmpty();
+        }
+    }
     
     @Override
     public Document processDocument(String id, String doc){
         Chain chain = LatexLexicalAnalyzer.parse(doc);
         MacroProcessor.process(chain);
-        model = new Model(id);
-        processChain(chain);
-        return model.getDocument();
+        MacroBlockProcessor.process(chain);
+        Document document = new Document();
+        document.setId(id);
+        List<Block> blocks = getBlocks(chain);
+        for (Item item : blocks.get(0).items) {
+            if(item instanceof Command){
+                Command command = (Command) item;
+                switch(command.getName()){
+                    case "\\thanks": document.setNotes(command.getFirstParamText()); break;
+                    case "\\title":  document.setTitle(command.getFirstParamText()); break;
+                    case "\\author":  document.setAuthor(command.getFirstParamText()); break;
+                    case "\\udk":  document.getClassifiers().put("UDK", command.getFirstParamText()); break;
+                    case "\\nomer":  document.setOutput(document.getOutput() + " nomer: " + command.getFirstParamText()); break;
+                    case "\\god":  document.setOutput(document.getOutput() + " year: " + command.getFirstParamText()); break;
+                }
+            }
+        }
+        for (int i = 1; i < blocks.size(); i++) {
+            Point point = new Point();
+            StringBuilder sb = new StringBuilder();
+            Block block = blocks.get(i);
+            String formulaBlock = null;
+            for (int j = 0; j < block.items.size(); j++) {
+                Item item = block.items.get(j);
+                if(item instanceof Command){
+                    Command command = (Command) item;
+                    switch(command.getName()){
+                        case "$": 
+                            if(formulaBlock != null){
+                                if(!formulaBlock.equals(command.getName())){
+                                    throw new RuntimeException();
+                                }
+                                sb.append("</formula> ");
+                                formulaBlock = null;
+                            }else{
+                                sb.append(" <formula>");
+                                formulaBlock = command.getName();
+                            }
+                            break;
+                        case "\\[": 
+                            if(formulaBlock != null){
+                                throw new RuntimeException();
+                            }
+                            sb.append(" <formula>");
+                            formulaBlock = command.getName();
+                            break;
+                        case "\\]": 
+                            if(formulaBlock == null || !formulaBlock.equals("\\[")){
+                                throw new RuntimeException();
+                            }
+                            sb.append("</formula> ");
+                            formulaBlock = null;
+                            break;
+                        case "\\begin": 
+                            break; 
+                        case "\\end": case "\\end=":
+                            break;      
+                        case "\\section": case "\\subsection": 
+                            point.setTitle(command.getFirstParamText());
+                            break;  
+                        case "\\text":  sb.append(" ").append(command.getFirstParamText()); break;
+                        case "\\intertext":  sb.append(" ").append(command.getFirstParamText()); break;
+                        default:
+                            sb.append(item.toString());
+                    }
+                }else{
+                    sb.append(item.toString());
+                }
+            }
+            point.setText(sb.toString());
+            document.getPoints().add(point);
+        }
+        return document;
     }
     
-    private void processChain(Chain chain){
+    private List<Block> getBlocks(Chain chain){
+        LinkedList<Block> list = new LinkedList<>();
+        list.add(new Block());
         Iterator<Item> items = chain.getList().iterator();
         while (items.hasNext()) {
             Item item = items.next();
+            if(item instanceof Command && ((Command)item).getName().equals("\\begin")){
+                processBlock(list, (Command) item, items);
+                continue;
+            }
+            list.getLast().add(item);
+        }
+        return list;
+    }
+    
+    private void processBlock(LinkedList<Block> list, Command begin, Iterator<Item> items){
+        if(!list.getLast().isEmpty()){
+            list.add(new Block());
+        }
+        list.getLast().add(begin);
+        String cur = begin.getFirstParamText();
+        while (items.hasNext()) {
+            Item item = items.next();
             if(item instanceof Command){
-                processCommand((Command) item);
-            }
-            if(item instanceof Group){
-                processChain(((Group) item).getText());
-            }
-            if(item instanceof PlainText){
-                processTextLine(((PlainText) item).toString());
-            }
-        }
-    }
-    
-    private void processCommand(Command command){
-        switch(command.getName()){
-            case "$": case "$$": 
-                if(openLatexBlockCommand != null){
-                    if(command.getName().equals(openLatexBlockCommand.getName())){
-                        if(model.isSentence()){
-                            model.closePart();
+                Command command = (Command) item;
+                switch(command.getName()){
+                    case "\\begin":
+                        if(command.getFirstParamText().equals(cur)){
+                            command.toString();
                         }
-                        openLatexBlockCommand = null;
-                    }else{
-                        return;
-                    }
-                }else{
-                    if(!model.isSentence()){
-                        model.openSentence();
-                    }
-                    model.openPart("latex");
-                    openLatexBlockCommand = command;
-                }
-                break;
-            case "\\[": 
-                if(openLatexBlockCommand != null){
-                    throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
-                }else{
-                    if(!model.isSentence()){
-                        model.openSentence();
-                    }
-                    model.openPart("latex");
-                    openLatexBlockCommand = command;
-                }
-                break;
-            case "\\]": 
-                if(openLatexBlockCommand == null){
-                    throw new RuntimeException("begin command: null; end command:" + command);
-                }else{
-                    if(command.getName().equals("\\]")){
-                        model.closePart();
-                        openLatexBlockCommand = null;
-                    }else{
-                        throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
-                    }
-                }
-                break;
-                
-            case "\\begin": 
-                switch(command.getFirstParamText()){
-                    case "equation": case "gather*": case "multline*": case "gather": case "multline":  
-                        if(openLatexBlockCommand != null){
-                            throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                        processBlock(list, command, items);
+                        break; 
+                    case "\\end": case "\\end=":
+                        if(cur.isEmpty() || command.getFirstParamText().equals(cur)){
+                            list.getLast().add(item);
+                            list.add(new Block());
+                            return; 
                         }else{
-                            if(!model.isSentence()){
-                                model.openSentence();
-                            }
-                            model.openPart("latex");
-                            openLatexBlockCommand = command;
-                        }
-                    break;    
-                    case "document": model.closeMeta(); break;   
-                }
-                break; 
-            case "\\end": 
-                switch(command.getFirstParamText()){
-                    case "equation": case "gather*": case "multline*": case "gather": case "multline":  
-                        if(openLatexBlockCommand == null){
-                            throw new RuntimeException("begin command: null; end command:" + command);
+                            throw new RuntimeException();
+                        }   
+                    case "\n\n": case "\\par": case "\\newline": case "\\vskip": 
+                        if(latexBlockNames.contains(cur)){
+                            list.getLast().add(item);
                         }else{
-                            if(openLatexBlockCommand.getName().equals("\\begin") && command.getFirstParamText().equals(openLatexBlockCommand.getFirstParamText())){
-                                model.closePart();
-                                openLatexBlockCommand = null;
-                            }else{
-                                throw new RuntimeException("begin command: " + openLatexBlockCommand + "; end command:" + command);
+                            if(!list.getLast().isEmpty()){
+                                list.add(new Block());
                             }
                         }
-                    break;    
+                        break;  
+                    case "\\section": case "\\subsection": 
+                        if(!cur.equals("document")){
+                            throw new RuntimeException();
+                        }
+                        if(!list.getLast().isEmpty()){
+                            list.add(new Block());
+                            list.getLast().add(item);
+                        }
+                        break; 
+                    default: list.getLast().add(item);
                 }
-                break;     
-            case "\n\n": case "\\par": case "\\newline": case "\\vskip": model.closePoint(null); break;  
-            case "\\section": 
-                model.closeSection();
-                model.openSection(command.getFirstParamText());
-                break;
-            case "\\subsection": 
-                model.closeSubsection();
-                model.openSubsection(command.getFirstParamText());
-                break;    
-            case "\\thanks": model.getDocument().setThanks(command.getFirstParamText()); break;
-            case "\\title":  model.getDocument().setTitle(command.getFirstParamText()); break;
-            case "\\author":  model.getDocument().setAuthor(command.getFirstParamText()); break;
-            case "\\udk":  model.getDocument().setClassifier(command.getFirstParamText()); break;
-            case "\\nomer":  model.getDocument().addOutput("nomer: " + command.getFirstParamText()); break;
-            case "\\god":  model.getDocument().addOutput("year: " + command.getFirstParamText()); break;
-            case "\\text":  model.appendLine(command.getFirstParamText()); break;
-            case "\\intertext":  model.appendLine(command.getFirstParamText()); break;
-            default:
-                for (CommandParam param : command.geParams()) {
-                    processChain(param.getText());
-                }
+            }else{
+                list.getLast().add(item);
+            }
         }
     }
-    
-    private void processTextLine(String line){
-        if(line.contains("Рассмотрим процедуру, подобную")){
-            line.toString();
-        }
-        line = " " + line.trim();
-        if(line.isEmpty()){
-            return;
-        }
-        CharacterIterator it = new StringCharacterIterator(line); 
-        char c = it.first();
-        while ( c != CharacterIterator.DONE) {
-            if(!model.isSentence()){
-                model.openSentence();
-            }
-            model.append(c);
-            if(c == '.'){
-                char first = it.next();
-                while(first != CharacterIterator.DONE && Character.isWhitespace(first)){
-                    first = it.next();
-                }
-                char second = it.next();
-                if(Character.isLetter(first) && Character.isUpperCase(first) && Character.isLetter(second)){
-                    model.closeSentence();
-                }
-                if(second != CharacterIterator.DONE){
-                    it.previous();
-                }
-                if(first != CharacterIterator.DONE){
-                    it.previous();
-                }
-            }
-            c = it.next();
-        }
-    }
-    
 }

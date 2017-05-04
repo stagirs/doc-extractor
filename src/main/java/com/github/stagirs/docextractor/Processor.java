@@ -15,7 +15,7 @@
  */
 package com.github.stagirs.docextractor;
 
-import com.github.stagirs.common.model.Document;
+import com.github.stagirs.common.document.Document;
 
 /**
  *

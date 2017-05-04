@@ -15,7 +15,7 @@
  */
 package com.github.stagirs.docextractor.latex;
 
-import com.github.stagirs.common.model.DocumentSerializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -80,19 +80,14 @@ public class LatexDocProcessorTest {
         
     }
     
-    @Test
-    public void test1() throws IOException{
-        String text = FileUtils.readFileToString(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\collection\\1997\\04\\01-4.TEX"), "cp1251");
-        DocumentSerializer.serialize(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\processed"), new LatexDocProcessor().processDocument("1997 04 01-4.html", text));
-    }
     
     @Test
-    public void test2() throws IOException{
+    public void test() throws IOException{
         DocIterator docs = new DocIterator(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\collection"));
         while(docs.hasNext()){
             Text text = docs.next();
             try{
-                DocumentSerializer.serialize(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\processed"), new LatexDocProcessor().processDocument(text.id, text.text.replace("\\endС", "\\end")));
+                FileUtils.writeStringToFile(new File("W:\\apache-tomcat-8.0.37\\work\\stagirs\\docs\\processed\\" + text.id), new ObjectMapper().writeValueAsString(new LatexDocProcessor().processDocument(text.id, text.text.replace("\\endС", "\\end"))), "utf-8");
             }catch(Throwable e){
                 System.err.println(text.id);
                 e.printStackTrace();

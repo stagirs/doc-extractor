@@ -17,10 +17,6 @@ package com.github.stagirs.docextractor;
 
 import com.github.stagirs.common.document.Document;
 
-/**
- *
- * @author Dmitriy Malakhov
- */
 public interface Processor {
     public Document processDocument(String id, String doc);
 }

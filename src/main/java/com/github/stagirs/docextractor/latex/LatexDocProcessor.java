@@ -43,7 +43,7 @@ import java.util.List;
 public class LatexDocProcessor implements Processor{
     HashSet<String> latexBlockNames = new HashSet(Arrays.asList("equation", "gather*", "multline*", "gather", "multline"));
     public class Block{
-        List<Item> items = new ArrayList<>();
+        List<Item> items = new ArrayList<Item>();
         public void add(Item item){
             items.add(item);
         }
@@ -63,14 +63,24 @@ public class LatexDocProcessor implements Processor{
         for (Item item : blocks.get(0).items) {
             if(item instanceof Command){
                 Command command = (Command) item;
-                switch(command.getName()){
-                    case "\\thanks": document.setNotes(command.getFirstParamText()); break;
-                    case "\\title":  document.setTitle(command.getFirstParamText()); break;
-                    case "\\author":  document.setAuthor(command.getFirstParamText()); break;
-                    case "\\udk":  document.getClassifiers().put("UDK", command.getFirstParamText()); break;
-                    case "\\nomer":  document.setOutput(document.getOutput() + " nomer: " + command.getFirstParamText()); break;
-                    case "\\god":  document.setOutput(document.getOutput() + " year: " + command.getFirstParamText()); break;
-                }
+                if(command.getName().equals("\\thanks")){
+                    document.setNotes(command.getFirstParamText());
+                }else
+                if(command.getName().equals("\\title")){
+                    document.getPoints().add(new Point(0, true, command.getFirstParamText()));
+                }else
+                if(command.getName().equals("\\author")){
+                    document.setAuthor(command.getFirstParamText());
+                }else
+                if(command.getName().equals("\\udk")){
+                    document.getClassifiers().put("UDK", command.getFirstParamText());
+                }else
+                if(command.getName().equals("\\nomer")){
+                    document.setOutput(document.getOutput() + " nomer: " + command.getFirstParamText());
+                }else
+                if(command.getName().equals("\\god")){
+                    document.setOutput(document.getOutput() + " year: " + command.getFirstParamText());
+                } 
             }
         }
         for (int i = 1; i < blocks.size(); i++) {
@@ -82,45 +92,46 @@ public class LatexDocProcessor implements Processor{
                 Item item = block.items.get(j);
                 if(item instanceof Command){
                     Command command = (Command) item;
-                    switch(command.getName()){
-                        case "$": 
-                            if(formulaBlock != null){
-                                if(!formulaBlock.equals(command.getName())){
-                                    throw new RuntimeException();
-                                }
-                                sb.append("</formula> ");
-                                formulaBlock = null;
-                            }else{
-                                sb.append(" <formula>");
-                                formulaBlock = command.getName();
-                            }
-                            break;
-                        case "\\[": 
-                            if(formulaBlock != null){
-                                throw new RuntimeException();
-                            }
-                            sb.append(" <formula>");
-                            formulaBlock = command.getName();
-                            break;
-                        case "\\]": 
-                            if(formulaBlock == null || !formulaBlock.equals("\\[")){
+                    if(command.getName().equals("$")){
+                        if(formulaBlock != null){
+                            if(!formulaBlock.equals(command.getName())){
                                 throw new RuntimeException();
                             }
                             sb.append("</formula> ");
                             formulaBlock = null;
-                            break;
-                        case "\\begin": 
-                            break; 
-                        case "\\end": case "\\end=":
-                            break;      
-                        case "\\section": case "\\subsection": 
-                            point.setTitle(command.getFirstParamText());
-                            break;  
-                        case "\\text":  sb.append(" ").append(command.getFirstParamText()); break;
-                        case "\\intertext":  sb.append(" ").append(command.getFirstParamText()); break;
-                        default:
-                            sb.append(item.toString());
-                    }
+                        }else{
+                            sb.append(" <formula>");
+                            formulaBlock = command.getName();
+                        }
+                    }else 
+                    if(command.getName().equals("\\[")){  
+                        if(formulaBlock != null){
+                            throw new RuntimeException();
+                        }
+                        sb.append(" <formula>");
+                        formulaBlock = command.getName();
+                    }else  
+                    if(command.getName().equals("\\]")){ 
+                        if(formulaBlock == null || !formulaBlock.equals("\\[")){
+                            throw new RuntimeException();
+                        }
+                        sb.append("</formula> ");
+                        formulaBlock = null;
+                    }else
+                    if(command.getName().equals("\\begin") || command.getName().equals("\\end") || command.getName().equals("\\end=")){   
+                        
+                    }else
+                    if(command.getName().equals("\\section") || command.getName().equals("\\subsection")){  
+                        document.getPoints().add(new Point(1, true, command.getFirstParamText()));
+                    }else
+                    if(command.getName().equals("\\text")){   
+                        sb.append(" ").append(command.getFirstParamText());
+                    }else
+                    if(command.getName().equals("\\intertext")){  
+                        sb.append(" ").append(command.getFirstParamText());
+                    }else{
+                        sb.append(item.toString());
+                    }    
                 }else{
                     sb.append(item.toString());
                 }
@@ -132,7 +143,7 @@ public class LatexDocProcessor implements Processor{
     }
     
     private List<Block> getBlocks(Chain chain){
-        LinkedList<Block> list = new LinkedList<>();
+        LinkedList<Block> list = new LinkedList<Block>();
         list.add(new Block());
         Iterator<Item> items = chain.getList().iterator();
         while (items.hasNext()) {
@@ -156,41 +167,41 @@ public class LatexDocProcessor implements Processor{
             Item item = items.next();
             if(item instanceof Command){
                 Command command = (Command) item;
-                switch(command.getName()){
-                    case "\\begin":
-                        if(command.getFirstParamText().equals(cur)){
-                            command.toString();
-                        }
-                        processBlock(list, command, items);
-                        break; 
-                    case "\\end": case "\\end=":
-                        if(cur.isEmpty() || command.getFirstParamText().equals(cur)){
-                            list.getLast().add(item);
-                            list.add(new Block());
-                            return; 
-                        }else{
-                            throw new RuntimeException();
-                        }   
-                    case "\n\n": case "\\par": case "\\newline": case "\\vskip": 
-                        if(latexBlockNames.contains(cur)){
-                            list.getLast().add(item);
-                        }else{
-                            if(!list.getLast().isEmpty()){
-                                list.add(new Block());
-                            }
-                        }
-                        break;  
-                    case "\\section": case "\\subsection": 
-                        if(!cur.equals("document")){
-                            throw new RuntimeException();
-                        }
+                if(command.getName().equals("\\begin")){
+                    if(command.getFirstParamText().equals(cur)){
+                        command.toString();
+                    }
+                    processBlock(list, command, items);
+                }else    
+                if(command.getName().equals("\\end") || command.getName().equals("\\end=")){  
+                    if(cur.isEmpty() || command.getFirstParamText().equals(cur)){
+                        list.getLast().add(item);
+                        list.add(new Block());
+                        return; 
+                    }else{
+                        throw new RuntimeException();
+                    }   
+                }else      
+                if(command.getName().equals("\n\n") || command.getName().equals("\\par") || command.getName().equals("\\newline") || command.getName().equals("\\vskip")){   
+                    if(latexBlockNames.contains(cur)){
+                        list.getLast().add(item);
+                    }else{
                         if(!list.getLast().isEmpty()){
                             list.add(new Block());
-                            list.getLast().add(item);
                         }
-                        break; 
-                    default: list.getLast().add(item);
-                }
+                    }
+                }else  
+                if(command.getName().equals("\\section") || command.getName().equals("\\subsection")){   
+                    if(!cur.equals("document")){
+                        throw new RuntimeException();
+                    }
+                    if(!list.getLast().isEmpty()){
+                        list.add(new Block());
+                        list.getLast().add(item);
+                    }
+                }else{
+                    list.getLast().add(item);
+                }    
             }else{
                 list.getLast().add(item);
             }
